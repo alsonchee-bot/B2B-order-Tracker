@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Add orders, move them from New through Dispatched to Delivered, and record who received and endorsed each delivery.">
+<style>
+/* Base reset (replaces the host page's defaults) */
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<title>Logistics Order Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout concept: one calm desk. Add form on top, four status columns of quiet cards below, a second tab for the courier handoff queue. Burnt orange is the only colour; it marks priority and the next action. */
+:root {
+  --font-display: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif;
+  --font-body: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --bg: #F5F6F8;
+  --surface: #FFFFFF;
+  --surface-2: #EDEFF3;
+  --line: #E1E4EA;
+  --line-strong: #C9CED8;
+  --fg: #1E232D;
+  --muted: #5D6676;
+  --accent: #B84E0B;
+  --accent-hover: #9F4308;
+  --on-accent: #FFFFFF;
+  --accent-soft: #FBE8DA;
+  --accent-soft-hover: #F6D6BF;
+  --accent-ink: #8A3C08;
+  --shadow: 0 1px 2px rgba(24, 30, 45, .05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151B;
+    --surface: #1A1E26;
+    --surface-2: #161A21;
+    --line: #2A303B;
+    --line-strong: #3A4150;
+    --fg: #E8EBF1;
+    --muted: #9AA3B2;
+    --accent: #F0A060;
+    --accent-hover: #F5B17A;
+    --on-accent: #2B1503;
+    --accent-soft: #3A2616;
+    --accent-soft-hover: #4A301B;
+    --accent-ink: #F5BB8A;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151B;
+  --surface: #1A1E26;
+  --surface-2: #161A21;
+  --line: #2A303B;
+  --line-strong: #3A4150;
+  --fg: #E8EBF1;
+  --muted: #9AA3B2;
+  --accent: #F0A060;
+  --accent-hover: #F5B17A;
+  --on-accent: #2B1503;
+  --accent-soft: #3A2616;
+  --accent-soft-hover: #4A301B;
+  --accent-ink: #F5BB8A;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 32px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+h1, h2, h3, p { margin: 0; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap { max-width: 1320px; margin: 0 auto; }
+
+/* Header */
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 24px; }
+.top-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.eyebrow { font-size: 13.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1.1; letter-spacing: -0.02em; text-wrap: balance; }
+
+.tabs { display: inline-flex; gap: 4px; padding: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; }
+.tabs a { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 9px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 14.5px; }
+.tabs a:hover { color: var(--fg); }
+.tabs a[aria-current="page"] { background: var(--surface); color: var(--fg); box-shadow: var(--shadow); }
+.badge { min-width: 22px; text-align: center; padding: 1px 7px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--muted); font: 500 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.badge.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* Sample banner */
+.samples { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 14px; margin-bottom: 20px; background: var(--accent-soft); color: var(--accent-ink); border-radius: 12px; font-size: 14px; }
+.link { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Panels and form */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; box-shadow: var(--shadow); }
+.add { margin-bottom: 24px; }
+.add h2 { font-family: var(--font-display); font-weight: 700; font-size: 17px; margin-bottom: 14px; }
+.add-grid { display: grid; grid-template-columns: 170px minmax(0, 1fr) auto auto; gap: 14px 16px; align-items: end; }
+.field { display: flex; flex-direction: column; min-width: 0; }
+.lbl { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+input[type="text"] { height: 42px; width: 100%; padding: 0 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; }
+input[type="text"]::placeholder { color: var(--muted); opacity: .8; }
+input[type="text"]:focus-visible { border-color: var(--accent); outline-offset: 0; }
+input[aria-invalid="true"] { border-color: var(--accent); }
+.mono { font-family: var(--font-mono); letter-spacing: .02em; }
+
+.seg { display: flex; gap: 2px; padding: 3px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
+.seg label { position: relative; flex: 1; }
+.seg input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.seg span { display: block; text-align: center; padding: 0 14px; height: 34px; line-height: 34px; border-radius: 8px; color: var(--muted); font-weight: 600; font-size: 14px; white-space: nowrap; }
+.seg input:checked + span { background: var(--surface); color: var(--fg); box-shadow: var(--shadow); }
+.seg input[value="high"]:checked + span { background: var(--accent-soft); color: var(--accent-ink); }
+.seg input[value="urgent"]:checked + span { background: var(--accent); color: var(--on-accent); }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.form-msg { margin-top: 12px; color: var(--accent-ink); font-size: 14px; font-weight: 500; }
+.form-msg:empty { display: none; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 14px; border: 1px solid transparent; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 14px; white-space: nowrap; }
+.btn svg { flex: none; }
+.btn.primary { background: var(--accent); color: var(--on-accent); height: 42px; padding: 0 20px; }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.soft { background: var(--accent-soft); color: var(--accent-ink); flex: 1; }
+.btn.soft:hover { background: var(--accent-soft-hover); }
+.btn.ghost { background: transparent; border-color: var(--line-strong); color: var(--muted); width: 38px; padding: 0; }
+.btn.ghost:hover { color: var(--fg); border-color: var(--muted); }
+
+/* Board */
+.board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 14px; background: var(--surface-2); border-radius: 16px; }
+.col-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px; }
+.col-head h3 { font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.count { padding: 1px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font: 500 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.col-empty { padding: 20px 14px; text-align: center; color: var(--muted); font-size: 13.5px; border: 1.5px dashed var(--line-strong); border-radius: 12px; text-wrap: balance; }
+
+.card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+.card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.oid { font: 400 12.5px var(--font-mono); letter-spacing: .02em; color: var(--muted); }
+.cust { font-weight: 600; font-size: 15.5px; line-height: 1.3; overflow-wrap: anywhere; }
+.when { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.when.late { color: var(--accent-ink); font-weight: 600; }
+.when.late::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--accent); }
+.actions { display: flex; gap: 8px; margin-top: 4px; }
+.actions .ghost:only-child { margin-left: auto; }
+.btn.ghost.text { width: auto; padding: 0 14px; }
+.receipt { display: flex; flex-direction: column; gap: 8px; }
+.receipt .lbl { margin: 0; }
+.receipt .actions { margin-top: 2px; }
+.recv { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
+.recv svg { flex: none; color: var(--accent-ink); }
+
+.chip { padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; }
+.chip.urgent { background: var(--accent); color: var(--on-accent); }
+.chip.high { background: var(--accent-soft); color: var(--accent-ink); }
+.chip.normal { background: var(--surface-2); color: var(--muted); }
+
+/* Pending dispatch */
+.pending-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
+.pending-head h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: -0.01em; }
+.pending-head p { color: var(--muted); max-width: 60ch; }
+.late-note { margin-left: 6px; color: var(--accent-ink); font-weight: 600; }
+.pending-list { display: grid; gap: 12px; max-width: 820px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 20px; align-items: center; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+.row-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.row .card-top { justify-content: flex-start; gap: 10px; }
+
+/* Empty states */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 44px 24px; text-align: center; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+.empty svg { margin-bottom: 4px; }
+.empty h3 { font-family: var(--font-display); font-weight: 700; font-size: 20px; text-wrap: balance; }
+.empty p { color: var(--muted); max-width: 42ch; text-wrap: balance; }
+.empty .btn { margin-top: 8px; }
+.empty a { color: var(--accent-ink); font-weight: 600; }
+
+/* Toast */
+#toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 12px); max-width: calc(100% - 32px); padding: 10px 18px; background: var(--fg); color: var(--bg); border-radius: 999px; font-size: 14px; font-weight: 500; box-shadow: 0 6px 20px rgba(0, 0, 0, .2); opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+
+/* Responsive */
+@media (max-width: 1240px) { .board { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 860px) {
+  .add-grid { grid-template-columns: 160px minmax(0, 1fr); }
+  .f-priority, .btn-add { grid-column: 1 / -1; }
+  .btn-add { width: 100%; }
+}
+@media (max-width: 560px) {
+  h1 { font-size: 26px; }
+  .add-grid { grid-template-columns: minmax(0, 1fr); }
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .row { grid-template-columns: minmax(0, 1fr); }
+  .row .btn { width: 100%; }
+  .tabs { width: 100%; }
+  .tabs a { flex: 1; justify-content: center; }
+  .panel { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="top-text">
+      <p class="eyebrow" id="today"></p>
+      <h1>Logistics Order Tracker</h1>
+    </div>
+    <nav class="tabs" aria-label="Views">
+      <a href="#board" id="tab-board">Status board</a>
+      <a href="#pending-dispatch" id="tab-pending">Pending dispatch <span class="badge" id="pending-count">0</span></a>
+    </nav>
+  </header>
+
+  <div class="samples" id="samples" hidden>
+    <span>Sample orders are loaded so you can try the board. Clear them to start with your own.</span>
+    <button type="button" class="link" data-act="clear-samples">Clear sample orders</button>
+  </div>
+
+  <main>
+    <section id="view-board" aria-label="Status board">
+      <form id="add-form" class="panel add" novalidate autocomplete="off">
+        <h2>Add an order</h2>
+        <div class="add-grid">
+          <div class="field">
+            <label class="lbl" for="f-id">Order ID</label>
+            <input id="f-id" name="id" type="text" class="mono" spellcheck="false" autocapitalize="characters">
+          </div>
+          <div class="field">
+            <label class="lbl" for="f-customer">Customer name</label>
+            <input id="f-customer" name="customer" type="text" placeholder="Who is this order for?">
+          </div>
+          <div class="field f-priority">
+            <span class="lbl" id="lbl-priority">Priority</span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-priority">
+              <label><input type="radio" name="priority" value="normal" checked><span>Normal</span></label>
+              <label><input type="radio" name="priority" value="high"><span>High</span></label>
+              <label><input type="radio" name="priority" value="urgent"><span>Urgent</span></label>
+            </div>
+          </div>
+          <button type="submit" class="btn primary btn-add">Add order</button>
+        </div>
+        <p class="form-msg" id="form-msg" role="alert"></p>
+      </form>
+      <div id="board"></div>
+    </section>
+
+    <section id="view-pending" aria-label="Pending dispatch" hidden>
+      <div class="pending-head">
+        <h2>Pending dispatch</h2>
+        <p><span id="pending-lede"></span><span class="late-note" id="late-note"></span></p>
+      </div>
+      <div class="pending-list" id="pending-list"></div>
+    </section>
+  </main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var KEY = 'logistics-order-tracker-v1';
+  var LATE_MS = 60 * 60000;
+  var STAGES = [
+    { key: 'new', label: 'New', action: 'Start picking', hint: 'New orders land here.' },
+    { key: 'picking', label: 'Picking', action: 'Mark packed', hint: 'Orders being picked show up here.' },
+    { key: 'packed', label: 'Packed', action: 'Dispatch', hint: 'Packed orders wait here for the courier.' },
+    { key: 'dispatched', label: 'Dispatched', action: 'Confirm delivery', hint: 'Orders handed to a courier wait here until the customer receives them.' },
+    { key: 'delivered', label: 'Delivered', action: null, hint: 'Orders the customer has received and endorsed end up here.' }
+  ];
+  var PRIORITY = { urgent: { label: 'Urgent', rank: 0 }, high: { label: 'High', rank: 1 }, normal: { label: 'Normal', rank: 2 } };
+  var SVG = 'viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  var ICON = {
+    back: '<svg ' + SVG + '><path d="M12 5l-5 5 5 5"/></svg>',
+    next: '<svg ' + SVG + '><path d="M4 10h11M11 5l5 5-5 5"/></svg>',
+    check: '<svg ' + SVG + '><path d="M4 10.5l4 4 8-9"/></svg>'
+  };
+  var PARCEL = '<svg viewBox="0 0 160 120" width="140" height="105" aria-hidden="true">' +
+    '<ellipse cx="80" cy="108" rx="48" ry="7" fill="var(--surface-2)"/>' +
+    '<path d="M30 44 L80 24 L130 44 L130 90 L80 108 L30 90 Z" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2" stroke-linejoin="round"/>' +
+    '<path d="M30 44 L80 62 L130 44 M80 62 L80 108" fill="none" stroke="var(--line-strong)" stroke-width="2" stroke-linejoin="round"/>' +
+    '<polygon points="72,27.2 80,24 88,27.2 88,59.1 80,62 72,59.1" fill="var(--accent)"/>' +
+    '</svg>';
+
+  function $(id) { return document.getElementById(id); }
+  function icon(name) { var s = document.createElement('span'); s.innerHTML = ICON[name]; return s.firstChild; }
+  function h(tag, props, kids) {
+    var el = document.createElement(tag);
+    if (props) {
+      Object.keys(props).forEach(function (k) {
+        var v = props[k];
+        if (v == null || v === false) return;
+        if (k === 'class') el.className = v;
+        else if (k === 'text') el.textContent = v;
+        else el.setAttribute(k, v);
+      });
+    }
+    (kids || []).forEach(function (c) { if (c != null) el.append(c); });
+    return el;
+  }
+
+  /* State */
+  function seed() {
+    var now = Date.now(), m = 60000;
+    function mk(id, customer, priority, status, ago) { return { id: id, customer: customer, priority: priority, status: status, at: now - ago * m, sample: true }; }
+    return {
+      counter: 10484,
+      orders: [
+        mk('ORD-10482', 'Harlow & Finch Interiors', 'urgent', 'new', 6),
+        mk('ORD-10483', 'Northgate Pharmacy Group', 'high', 'new', 18),
+        mk('ORD-10484', 'Juniper Bakery Supply', 'normal', 'new', 42),
+        mk('ORD-10479', 'Calder Outdoor Co.', 'high', 'picking', 35),
+        mk('ORD-10480', 'Meridian Bike Works', 'normal', 'picking', 70),
+        mk('ORD-10476', 'Linden Street Books', 'urgent', 'packed', 85),
+        mk('ORD-10477', 'Alder Home Goods', 'normal', 'packed', 22),
+        mk('ORD-10471', 'Pier 9 Seafood Market', 'high', 'dispatched', 120),
+        mk('ORD-10473', 'Birchwood Dental Supply', 'normal', 'dispatched', 55),
+        (function () { var d = mk('ORD-10468', 'Wren & Co. Stationers', 'normal', 'delivered', 190); d.receivedBy = 'M. Okafor'; return d; })()
+      ]
+    };
+  }
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var s = JSON.parse(raw);
+        if (s && Array.isArray(s.orders)) { if (typeof s.counter !== 'number') s.counter = 10000; return s; }
+      }
+    } catch (e) { /* storage unavailable: run in memory */ }
+    return seed();
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } }
+  var state = load();
+
+  function stageIndex(key) { return STAGES.findIndex(function (s) { return s.key === key; }); }
+  function byPriority(a, b) { return PRIORITY[a.priority].rank - PRIORITY[b.priority].rank || a.at - b.at; }
+  function inStage(key) {
+    var list = state.orders.filter(function (o) { return o.status === key; });
+    return key === 'delivered' ? list.sort(function (a, b) { return b.at - a.at; }) : list.sort(byPriority);
+  }
+  function find(id) { return state.orders.find(function (o) { return o.id === id; }); }
+  function nextId() { return 'ORD-' + (state.counter + 1); }
+  function bumpCounter(id) {
+    var m = /^ORD-(\d+)$/.exec(id);
+    if (m && Number(m[1]) > state.counter) state.counter = Number(m[1]);
+  }
+
+  /* Time wording */
+  function dur(ms) {
+    var m = Math.floor(ms / 60000);
+    if (m < 1) return '<1m';
+    if (m < 60) return m + 'm';
+    var hr = Math.floor(m / 60);
+    if (hr < 24) { var r = m % 60; return hr + 'h' + (r ? ' ' + r + 'm' : ''); }
+    return Math.floor(hr / 24) + 'd';
+  }
+  function ago(ms) { return ms < 60000 ? 'just now' : dur(ms) + ' ago'; }
+  function phrase(o) {
+    var ms = Math.max(0, Date.now() - o.at);
+    if (o.status === 'new') return 'Received ' + ago(ms);
+    if (o.status === 'picking') return 'Picking for ' + dur(ms);
+    if (o.status === 'packed') return 'Waiting ' + dur(ms);
+    if (o.status === 'dispatched') return 'In transit for ' + dur(ms);
+    return 'Delivered ' + ago(ms);
+  }
+  function isLate(o) { return o.status === 'packed' && Date.now() - o.at > LATE_MS; }
+
+  /* Pieces */
+  function chip(o) { return h('span', { class: 'chip ' + o.priority, text: PRIORITY[o.priority].label }); }
+  function when(o) { return h('p', { class: 'when' + (isLate(o) ? ' late' : ''), 'data-id': o.id, text: phrase(o) }); }
+
+  function receiptCard(o) {
+    var input = h('input', { type: 'text', id: 'receipt-name', name: 'receivedBy', placeholder: 'Name on the signed delivery order', autocomplete: 'off' });
+    return h('article', { class: 'card', 'data-card': o.id }, [
+      h('div', { class: 'card-top' }, [h('span', { class: 'oid', text: o.id }), chip(o)]),
+      h('h4', { class: 'cust', text: o.customer }),
+      h('form', { class: 'receipt', 'data-id': o.id, novalidate: '' }, [
+        h('label', { class: 'lbl', for: 'receipt-name', text: 'Received and endorsed by' }),
+        input,
+        h('div', { class: 'actions' }, [
+          h('button', { type: 'button', class: 'btn ghost text', 'data-act': 'cancel-receipt', text: 'Cancel' }),
+          h('button', { type: 'submit', class: 'btn soft', text: 'Confirm delivery' })
+        ])
+      ])
+    ]);
+  }
+
+  function card(o, idx) {
+    var st = STAGES[idx];
+    if (confirming === o.id && o.status === 'dispatched') return receiptCard(o);
+    var actions = h('div', { class: 'actions' });
+    if (st.action) {
+      actions.append(h('button', { type: 'button', class: 'btn soft', 'data-act': 'next', 'data-id': o.id }, [st.action, icon('next')]));
+    }
+    if (idx > 0) {
+      var prev = STAGES[idx - 1].label;
+      actions.prepend(h('button', { type: 'button', class: 'btn ghost', 'data-act': 'back', 'data-id': o.id, 'aria-label': 'Move ' + o.id + ' back to ' + prev, title: 'Back to ' + prev }, [icon('back')]));
+    }
+    return h('article', { class: 'card', 'data-card': o.id }, [
+      h('div', { class: 'card-top' }, [h('span', { class: 'oid', text: o.id }), chip(o)]),
+      h('h4', { class: 'cust', text: o.customer }),
+      when(o),
+      o.status === 'delivered' ? h('p', { class: 'recv' }, [icon('check'), o.receivedBy ? 'Received by ' + o.receivedBy : 'Received and endorsed']) : null,
+      actions
+    ]);
+  }
+
+  function pendingRow(o) {
+    return h('article', { class: 'row', 'data-card': o.id }, [
+      h('div', { class: 'row-main' }, [
+        h('div', { class: 'card-top' }, [h('span', { class: 'oid', text: o.id }), chip(o)]),
+        h('h4', { class: 'cust', text: o.customer }),
+        when(o)
+      ]),
+      h('button', { type: 'button', class: 'btn primary', 'data-act': 'next', 'data-id': o.id }, ['Hand off to courier', icon('next')])
+    ]);
+  }
+
+  function emptyBoard() {
+    var box = h('div', { class: 'empty' });
+    box.innerHTML = PARCEL;
+    box.append(
+      h('h3', { text: 'No orders yet' }),
+      h('p', { text: 'Add your first order above. It only needs an ID, a customer and a priority.' }),
+      h('button', { type: 'button', class: 'btn primary', 'data-act': 'focus-form', text: 'Add the first order' })
+    );
+    return box;
+  }
+  function emptyPending() {
+    var box = h('div', { class: 'empty' });
+    box.innerHTML = PARCEL;
+    var link = h('a', { href: '#board', text: 'status board' });
+    var p = h('p', {}, ['Packed orders show up here, most urgent first, ready for the courier. Mark one as packed on the ', link, '.']);
+    box.append(h('h3', { text: 'Nothing waiting for the courier' }), p);
+    return box;
+  }
+
+  /* Rendering */
+  function renderBoard() {
+    var root = $('board');
+    root.replaceChildren();
+    if (!state.orders.length) { root.append(emptyBoard()); return; }
+    var grid = h('div', { class: 'board' });
+    STAGES.forEach(function (st, i) {
+      var list = inStage(st.key);
+      var col = h('section', { class: 'col', 'aria-label': st.label + ' orders' }, [
+        h('div', { class: 'col-head' }, [h('h3', { text: st.label }), h('span', { class: 'count', text: String(list.length) })])
+      ]);
+      if (!list.length) col.append(h('p', { class: 'col-empty', text: st.hint }));
+      list.forEach(function (o) { col.append(card(o, i)); });
+      grid.append(col);
+    });
+    root.append(grid);
+  }
+
+  function renderPending() {
+    var list = inStage('packed');
+    var root = $('pending-list');
+    root.replaceChildren();
+    $('pending-lede').textContent = list.length
+      ? list.length + (list.length === 1 ? ' packed order is' : ' packed orders are') + ' ready for courier handoff, most urgent first.'
+      : 'Nothing is waiting right now.';
+    if (!list.length) { root.append(emptyPending()); } else { list.forEach(function (o) { root.append(pendingRow(o)); }); }
+    updateLate();
+  }
+
+  function updateLate() {
+    var c = state.orders.filter(isLate).length;
+    $('late-note').textContent = c ? c + (c === 1 ? ' has' : ' have') + ' waited over an hour.' : '';
+  }
+
+  function renderChrome() {
+    var open = state.orders.filter(function (o) { return o.status !== 'delivered'; }).length;
+    var d = new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    $('today').textContent = d + ' · ' + open + ' open order' + (open === 1 ? '' : 's');
+    var n = inStage('packed').length;
+    var badge = $('pending-count');
+    badge.textContent = String(n);
+    badge.classList.toggle('on', n > 0);
+    $('samples').hidden = !state.orders.some(function (o) { return o.sample; });
+  }
+
+  function renderAll() { renderChrome(); renderBoard(); renderPending(); }
+
+  function tick() {
+    document.querySelectorAll('.when[data-id]').forEach(function (el) {
+      var o = find(el.getAttribute('data-id'));
+      if (!o) return;
+      el.textContent = phrase(o);
+      el.classList.toggle('late', isLate(o));
+    });
+    updateLate();
+  }
+
+  /* Toast */
+  var toastTimer;
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  }
+
+  /* Status updates */
+  var confirming = null;
+  function openReceipt(id) {
+    confirming = id;
+    renderBoard();
+    var inp = $('receipt-name');
+    if (inp) inp.focus();
+  }
+
+  function move(id, dir, viaKeyboard, receivedBy) {
+    var o = find(id);
+    if (!o) return;
+    var n = stageIndex(o.status) + dir;
+    if (n < 0 || n >= STAGES.length) return;
+    if (confirming === id) confirming = null;
+    o.status = STAGES[n].key;
+    o.at = Date.now();
+    if (o.status === 'delivered') { if (receivedBy) o.receivedBy = receivedBy; } else { delete o.receivedBy; }
+    save();
+    renderAll();
+    toast(o.status === 'dispatched' ? id + ' dispatched' : o.status === 'delivered' ? id + ' delivered and endorsed' : id + ' moved to ' + STAGES[n].label);
+    if (viaKeyboard) {
+      var el = document.querySelector('[data-card="' + CSS.escape(id) + '"] [data-act]');
+      if (el) el.focus();
+    }
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]');
+    if (!b) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'next') {
+      var ord = find(b.getAttribute('data-id'));
+      if (ord && ord.status === 'dispatched') openReceipt(ord.id);
+      else move(b.getAttribute('data-id'), 1, e.detail === 0);
+    }
+    else if (act === 'back') move(b.getAttribute('data-id'), -1, e.detail === 0);
+    else if (act === 'clear-samples') {
+      state.orders = state.orders.filter(function (o) { return !o.sample; });
+      save();
+      renderAll();
+      toast('Sample orders cleared');
+    } else if (act === 'focus-form') { nameIn.focus(); }
+    else if (act === 'cancel-receipt') { confirming = null; renderBoard(); }
+  });
+
+  document.addEventListener('submit', function (e) {
+    var f = e.target.closest('.receipt');
+    if (!f) return;
+    e.preventDefault();
+    var name = f.elements['receivedBy'].value.trim().replace(/\s+/g, ' ');
+    move(f.getAttribute('data-id'), 1, true, name);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || !confirming) return;
+    var id = confirming;
+    confirming = null;
+    renderBoard();
+    var el = document.querySelector('[data-card="' + CSS.escape(id) + '"] [data-act]');
+    if (el) el.focus();
+  });
+
+  /* Add an order */
+  var form = $('add-form'), idIn = $('f-id'), nameIn = $('f-customer'), msgEl = $('form-msg');
+  function setError(msg, field) {
+    msgEl.textContent = msg;
+    [idIn, nameIn].forEach(function (f) { f.setAttribute('aria-invalid', f === field ? 'true' : 'false'); });
+  }
+  idIn.addEventListener('input', function () { setError('', null); });
+  nameIn.addEventListener('input', function () { setError('', null); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var id = idIn.value.trim().toUpperCase().replace(/\s+/g, '-');
+    var customer = nameIn.value.trim().replace(/\s+/g, ' ');
+    var priority = form.elements['priority'].value;
+    var msg = '', bad = null;
+    if (!id) { msg = 'Enter an order ID.'; bad = idIn; }
+    else if (find(id)) { msg = id + ' is already on the board. Use a different ID.'; bad = idIn; }
+    else if (!customer) { msg = 'Enter the customer name.'; bad = nameIn; }
+    setError(msg, bad);
+    if (msg) { bad.focus(); return; }
+    state.orders.push({ id: id, customer: customer, priority: priority, status: 'new', at: Date.now() });
+    bumpCounter(id);
+    save();
+    form.elements['priority'].value = 'normal';
+    nameIn.value = '';
+    idIn.value = nextId();
+    renderAll();
+    toast(id + ' added to New');
+    nameIn.focus();
+  });
+
+  /* Views */
+  function route() {
+    var pending = location.hash === '#pending-dispatch';
+    $('view-board').hidden = pending;
+    $('view-pending').hidden = !pending;
+    var tb = $('tab-board'), tp = $('tab-pending');
+    if (pending) { tp.setAttribute('aria-current', 'page'); tb.removeAttribute('aria-current'); }
+    else { tb.setAttribute('aria-current', 'page'); tp.removeAttribute('aria-current'); }
+  }
+  window.addEventListener('hashchange', route);
+
+  idIn.value = nextId();
+  renderAll();
+  route();
+  setInterval(tick, 30000);
+})();
+</script>
+</body>
+</html>
