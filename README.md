@@ -18,4 +18,5 @@ Or push this folder to a Git repo and import it at vercel.com/new.
 - Orders are saved in the browser's localStorage, per device. There is no backend yet.
 - Flow: New, Picking, Packed, Dispatched, Delivered. "Confirm delivery" on a dispatched order asks who received and endorsed it.
 - Sample orders load on first visit; use "Clear sample orders" to remove them.
-- Fonts load from Google Fonts. No other network requests are made.
+- Bulk upload: the Upload Excel button reads .xlsx, .xls or .csv in the browser (nothing is sent to a server). Row one needs `Order ID` and `Customer name` headers; `Priority` is optional. Try `sample-orders.xlsx`.
+- Fonts load from Google Fonts and the spreadsheet reader (SheetJS 0.18.5) loads from cdnjs. No other network requests are made.
